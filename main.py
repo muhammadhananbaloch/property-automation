@@ -1,112 +1,92 @@
 import os
 import time
-import json
 from datetime import datetime
 from app.services.property_radar import PropertyRadarClient
-from app.utils.export import save_leads_locally
+from app.core.criteria_mapper import CriteriaMapper
+from app.utils.file_manager import save_leads_locally
 
-# CONFIGURATION
-LIST_ID = "1124721" 
-STATE_FILE = "last_run_date.txt"
-
-def is_data_unlocked(data_list):
-    """
-    Helper to check if the list contains actual data (Values) 
-    instead of just 'href' links or empty entries.
-    """
-    if not data_list or not isinstance(data_list, list):
-        return False
-        
-    for item in data_list:
-        # If it's a dictionary, check for the 'Value' or 'value' key (The actual number)
-        if isinstance(item, dict):
-            if item.get('Value') or item.get('value'):
-                return True
-        # If it's a raw string (rare), it's unlocked
-        elif isinstance(item, str) and len(item) > 5:
-            return True
-            
-    return False
+# --- CONFIGURATION ---
+TARGET_STATE = "VA"
+TARGET_CITY = "RICHMOND"
+TARGET_STRATEGY = "tax_delinquent" 
+LIST_NAME = f"Auto_Monitor_{TARGET_CITY}_{TARGET_STRATEGY}"
 
 def main():
-    print("🚜 Starting Weekly Harvest (Smart Mode)...")
+    print(f"🚀 Starting Engine: {TARGET_STRATEGY} in {TARGET_CITY}, {TARGET_STATE}...")
     client = PropertyRadarClient()
 
-    # 1. GET TARGETS
-    INPUT_FILE = "Virginia_Tax_Delinquent_Leads.json"
+    # 1. CHECK / CREATE LIST
+    print("📋 Checking for existing list...")
+    existing_lists = client.get_my_lists()
+    target_list_id = None
     
-    if os.path.exists(INPUT_FILE):
-        print(f"📂 Loading {INPUT_FILE}...")
-        with open(INPUT_FILE, "r") as f:
-            raw_data = json.load(f)
-        # Process first 5 for testing
-        leads_to_process = raw_data
-    else:
-        print("❌ JSON file missing.")
+    for l in existing_lists:
+        if l.get('ListName') == LIST_NAME:
+            target_list_id = l.get('ListID')
+            print(f"   ✅ Found existing list: {LIST_NAME} (ID: {target_list_id})")
+            break
+    
+    if not target_list_id:
+        print("   ⚠️ List not found. Creating new dynamic trap...")
+        criteria = CriteriaMapper.build_criteria(TARGET_STATE, TARGET_CITY, TARGET_STRATEGY)
+        target_list_id = client.create_dynamic_list(LIST_NAME, criteria)
+        if target_list_id:
+            client.set_list_automation(target_list_id)
+
+    if not target_list_id:
+        print("❌ Critical Error: Could not get a List ID.")
         return
 
-    print(f"⚡ Processing {len(leads_to_process)} leads...")
+    # 2. HARVEST
+    print("🚜 Checking for leads...")
+    # Limit 10 for safety
+    items = client.get_new_list_items(target_list_id, limit=10) 
+    
+    new_ids = [item.get('RadarID') for item in items if item.get('RadarID')]
+    
+    if not new_ids:
+        print("zzz No leads found in the trap.")
+        return
 
-    # 2. ENRICHMENT LOOP
+    print(f"⚡ Processing {len(new_ids)} leads...")
     final_leads = []
     
-    for i, prop in enumerate(leads_to_process):
-        radar_id = prop.get('RadarID') or prop.get('id')
-        address = prop.get('Address', 'Unknown Address')
+    for i, radar_id in enumerate(new_ids):
+        # --- FIX START: Get Full Property Data First ---
+        # We need the address, beds, equity, etc.
+        # We use a new method 'get_property_data' which calls the main endpoint
+        property_data = client.get_property_data(radar_id)
+        if not property_data:
+             # Fallback to minimal object if fetch fails
+             property_data = {"RadarID": radar_id}
         
-        print(f"\n[{i+1}/{len(leads_to_process)}] Processing {address} ({radar_id})...")
-        
+        address = property_data.get('Address', 'Unknown Address')
+        print(f"   [{i+1}/{len(new_ids)}] Processing {address}...")
+        # -----------------------------------------------
+
         # A. Get Owners
-        # We use Purchase=1 here to ensure we see the data if it WAS already bought
         persons = client.get_property_owners(radar_id)
         
+        # B. Safety Unlock
         if persons:
-            # Sort: Primary Contact first
             persons.sort(key=lambda x: x.get('isPrimaryContact', 0), reverse=True)
-            
-            for person in persons[:2]: 
-                pkey = person.get('PersonKey')
-                name = f"{person.get('FirstName', '')} {person.get('LastName', '')}"
-                
-                if pkey:
-                    print(f"   👤 Reviewing: {name}...")
-                    
-                    # --- SMART CHECK: PHONES ---
-                    current_phones = person.get('Phone', [])
-                    if is_data_unlocked(current_phones):
-                         print(f"      ✅ Phones already unlocked. Skipping purchase.")
-                    else:
-                         print(f"      🔓 Locked. Buying Phones...")
-                         phones = client.unlock_contact_field(pkey, field="Phone")
-                         if phones:
-                             person['Phone'] = phones
-                             print(f"         -> Success! Got {len(phones)} numbers.")
-                         else:
-                             person['Phone'] = [] # Clear 'href' links if buy failed
+            for person in persons[:1]: 
+                if not person.get('Phone'): 
+                    pkey = person.get('PersonKey')
+                    if pkey:
+                        print(f"      🔓 Manual Unlock: {person.get('FirstName')}")
+                        phones = client.unlock_contact_field(pkey, field="Phone")
+                        if phones: person['Phone'] = phones
+                        time.sleep(0.5)
 
-                    # --- SMART CHECK: EMAILS ---
-                    current_emails = person.get('Email', [])
-                    if is_data_unlocked(current_emails):
-                         print(f"      ✅ Emails already unlocked. Skipping purchase.")
-                    else:
-                         print(f"      🔓 Locked. Buying Emails...")
-                         emails = client.unlock_contact_field(pkey, field="Email")
-                         if emails:
-                             person['Email'] = emails
-                             print(f"         -> Success! Got {len(emails)} emails.")
-                         else:
-                             person['Email'] = [] # Clear 'href' links
+        # Merge Persons into the FULL Property Data
+        property_data['Persons'] = persons
+        final_leads.append(property_data)
 
-                    # Polite delay only if we actually hit the API
-                    time.sleep(0.2)
-
-        prop['Persons'] = persons
-        final_leads.append(prop)
-
-    # 3. SAVE
-    filename = f"Final_Smart_Leads_{datetime.now().strftime('%Y%m%d')}"
+    # 3. EXPORT
+    filename = f"{TARGET_CITY}_{TARGET_STRATEGY}_{datetime.now().strftime('%Y%m%d')}"
     save_leads_locally(final_leads, filename_prefix=filename)
-    print("\n✅ MISSION ACCOMPLISHED.")
+    print(f"\n✅ Done. Report generated: {filename}.xlsx")
 
 if __name__ == "__main__":
     main()
