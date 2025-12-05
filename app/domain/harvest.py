@@ -1,83 +1,117 @@
 import time
+import json
+import os
 from datetime import datetime
 from app.services.property_radar import PropertyRadarClient
 from app.core.criteria_mapper import CriteriaMapper
 from app.utils.file_manager import save_leads_locally
 
+# --- HISTORY MANAGER ---
+HISTORY_FILE = "purchase_history2.json"
+
+def load_history():
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, 'r') as f: return json.load(f)
+        except: pass
+    return {"purchased_ids": [], "last_run_date": "2023-01-01"}
+
+def save_history(history_data):
+    with open(HISTORY_FILE, 'w') as f: json.dump(history_data, f, indent=2)
+
+# --- HELPER: CHECK IF DATA IS REAL ---
+def needs_unlocking(data_list):
+    """Returns True if list is empty OR contains only locked 'href' links."""
+    if not data_list: return True
+    for item in data_list:
+        if isinstance(item, dict):
+            # If it has 'href' but NO 'Value', it is locked.
+            if 'href' in item and not (item.get('Value') or item.get('value') or item.get('Linktext')):
+                return True
+    return False
+
 def run_weekly_harvest(state, city, strategy):
-    """
-    The Core Business Logic:
-    1. Checks/Creates the Dynamic List (Trap)
-    2. Checks for new items (Harvest)
-    3. Enriches them (Skip Trace)
-    4. Saves the report
-    """
     list_name = f"Auto_Monitor_{city}_{strategy}"
     print(f"🚀 Starting Harvest: {strategy} in {city}, {state}...")
     
+    # 1. LOAD STATE
+    history = load_history()
+    purchased_set = set(history.get("purchased_ids", []))
+    last_run = history.get("last_run_date", "2023-01-01")
     client = PropertyRadarClient()
 
-    # 1. ENSURE TRAP EXISTS
+    # 2. ENSURE TRAP EXISTS
     print("📋 Checking for existing list...")
     existing_lists = client.get_my_lists()
-    target_list_id = None
-    
-    for l in existing_lists:
-        if l.get('ListName') == list_name:
-            target_list_id = l.get('ListID')
-            print(f"   ✅ Found trap: {list_name} (ID: {target_list_id})")
-            break
+    target_list_id = next((l['ListID'] for l in existing_lists if l.get('ListName') == list_name), None)
     
     if not target_list_id:
         print("   ⚠️ Trap not found. creating new dynamic list...")
         criteria = CriteriaMapper.build_criteria(state, city, strategy)
         target_list_id = client.create_dynamic_list(list_name, criteria)
-        if target_list_id:
-            client.set_list_automation(target_list_id)
+        if target_list_id: client.set_list_automation(target_list_id)
+        time.sleep(5)
 
     if not target_list_id:
         print("❌ Critical Error: Could not get a List ID.")
         return
 
-    # 2. HARVEST NEW LEADS
-    print("🚜 Checking for leads...")
-    items = client.get_new_list_items(target_list_id, limit=10)
-    new_ids = [item.get('RadarID') for item in items if item.get('RadarID')]
+    # 3. HARVEST NEW LEADS
+    print(f"🚜 Checking for items added since {last_run}...")
+    items = client.get_new_list_items(target_list_id, added_since=last_run, limit=2)
+    raw_ids = [item.get('RadarID') for item in items if item.get('RadarID')]
+    
+    # Filter duplicates
+    new_ids = [rid for rid in raw_ids if rid not in purchased_set]
+    print(f"   🔍 Found {len(new_ids)} new unpurchased leads.")
     
     if not new_ids:
-        print("zzz No leads found in the trap.")
+        print("zzz No new leads found.")
+        # Update date anyway
+        history["last_run_date"] = datetime.now().strftime("%Y-%m-%d")
+        save_history(history)
         return
 
-    print(f"⚡ Processing {len(new_ids)} leads...")
+    # 4. ENRICHMENT LOOP
     final_leads = []
-    
-    # 3. ENRICHMENT LOOP
     for i, radar_id in enumerate(new_ids):
-        # A. Get Property Details (The House)
+        # A. Get Property Details
         prop_data = client.get_property_data(radar_id) or {"RadarID": radar_id}
-        address = prop_data.get('Address', 'Unknown Address')
-        
-        print(f"   [{i+1}/{len(new_ids)}] Processing {address}...")
+        print(f"   [{i+1}/{len(new_ids)}] Processing {prop_data.get('Address', 'Unknown')}...")
 
-        # B. Get Owners (The People)
+        # B. Get Owners
         persons = client.get_property_owners(radar_id)
         
-        # C. Safety Unlock (The Phone)
+        # C. Smart Unlock
         if persons:
             persons.sort(key=lambda x: x.get('isPrimaryContact', 0), reverse=True)
             for person in persons[:1]: 
-                if not person.get('Phone'): 
-                    pkey = person.get('PersonKey')
-                    if pkey:
-                        print(f"      🔓 Manual Unlock: {person.get('FirstName')}")
+                pkey = person.get('PersonKey')
+                
+                if pkey:
+                    # Check Phones
+                    if needs_unlocking(person.get('Phone')):
+                        print(f"      🔓 Unlocking Phone...")
                         phones = client.unlock_contact_field(pkey, field="Phone")
                         if phones: person['Phone'] = phones
+                        time.sleep(0.5)
+                    
+                    # Check Emails
+                    if needs_unlocking(person.get('Email')):
+                        print(f"      🔓 Unlocking Email...")
+                        emails = client.unlock_contact_field(pkey, field="Email")
+                        if emails: person['Email'] = emails
                         time.sleep(0.5)
 
         prop_data['Persons'] = persons
         final_leads.append(prop_data)
+        purchased_set.add(radar_id)
 
-    # 4. SAVE REPORT
+    # 5. SAVE REPORT
     filename = f"{city}_{strategy}_{datetime.now().strftime('%Y%m%d')}"
     save_leads_locally(final_leads, filename_prefix=filename)
+    
+    history["purchased_ids"] = list(purchased_set)
+    history["last_run_date"] = datetime.now().strftime("%Y-%m-%d")
+    save_history(history)
     print(f"\n✅ Harvest Complete. Report: {filename}.xlsx")
