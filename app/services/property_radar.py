@@ -94,10 +94,17 @@ class PropertyRadarClient:
         url = f"{self.BASE_URL}/persons/{person_key}/{field}"
         params = {"Purchase": "1"}
         try:
-            response = requests.post(url, headers=self.headers, params=params)
+            response = requests.post(url, headers=self.headers, params=params, json={}) #DEBUG
             if response.status_code == 200:
                 data = response.json()
-                return data.get('results', data)
+                results = data.get('results', data)
+            
+                # DEBUG: If empty, print why
+                if not results:
+                    print(f"      ⚠️ API returned empty 200 OK for {field}. Raw: {response.text}")
+
+                return results 
+            print(f"      ❌ Unlock Error {response.status_code}: {response.text}") #DEBUG
             return []
         except: return []
 
