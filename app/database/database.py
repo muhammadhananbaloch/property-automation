@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
-from config import Config
+from app.core.config import Config
 
 # --- 1. THE CONNECTION URL ---
 # We build the "phone number" to dial your database using the secrets from Config.
