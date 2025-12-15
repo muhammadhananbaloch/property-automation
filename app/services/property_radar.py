@@ -1,7 +1,7 @@
 import requests
 import json
 import time
-from config import Config
+from app.core.config import Config
 
 class PropertyRadarClient:
     BASE_URL = "https://api.propertyradar.com/v1"
@@ -63,7 +63,7 @@ class PropertyRadarClient:
             return False
 
     # --- 3. HARVEST ---
-    def get_new_list_items(self, list_id, added_since=None, limit=10):
+    def get_new_list_items(self, list_id, added_since=None, limit=1000):
         url = f"{self.BASE_URL}/lists/{list_id}/items"
         params = {"Limit": str(limit)} 
         if added_since: params["AddedSince"] = added_since
