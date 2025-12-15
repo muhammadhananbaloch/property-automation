@@ -1,5 +1,5 @@
 from twilio.rest import Client
-from config import Config
+from app.core.config import Config
 import time
 
 class SmsService:
