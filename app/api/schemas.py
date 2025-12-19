@@ -1,64 +1,18 @@
+import json
+import ast
 from pydantic import BaseModel
 from typing import List, Optional, Any
 from datetime import datetime
 
 # =======================
-# 1. INPUT SCHEMAS (Requests)
+# 1. SHARED MODELS (Must come first!)
 # =======================
-
-class ScanRequest(BaseModel):
-    """
-    What the frontend sends to start a 'Scan' (Phase 1).
-    """
-    state: str
-    city: str
-    strategy: str
-
-class EnrichRequest(BaseModel):
-    """
-    What the frontend sends to start 'Enrichment' (Phase 2).
-    Includes the specific list of IDs the user chose to buy.
-    """
-    state: str
-    city: str
-    strategy: str
-    radar_ids: List[str]  # e.g. ["PDD123", "PDD456"]
-
-# =======================
-# 2. OUTPUT SCHEMAS (Responses)
-# =======================
-
-class ScanSummary(BaseModel):
-    """
-    The report we send back after a Scan.
-    """
-    list_id: Optional[int] = None
-    total_in_list: int
-    purchased_count: int
-    new_count: int
-    new_ids: List[str]       # We send these so the frontend can slice them
-    purchased_ids: List[str] # We send these so the frontend can re-process them
-
-class EnrichResult(BaseModel):
-    """
-    The confirmation we send back after buying leads.
-    """
-    status: str
-    saved_count: int
-
-# =======================
-# 3. DATABASE MODELS (Reading History)
-# =======================
-
-# app/api/schemas.py
-
-# ... keep previous classes the same ...
-
-# app/api/schemas.py
-
-# ... (keep other classes the same) ...
 
 class LeadResponse(BaseModel):
+    """
+    The Full Lead Object (with Phones & Emails).
+    Used for History AND "Already Owned" lists.
+    """
     radar_id: str
     address: Optional[str]
     city: Optional[str]
@@ -71,22 +25,65 @@ class LeadResponse(BaseModel):
     estimated_value: Optional[float] = 0.0
     beds: Optional[int] = 0
     baths: Optional[float] = 0.0
+    sq_ft: Optional[int] = 0       # <--- NEW FIELD ADDED
     year_built: Optional[int] = 0
     
     # Contact Info
     phone_numbers: List[str] = []
-    emails: List[str] = []    
+    emails: List[str] = []
+    
     class Config:
         from_attributes = True
+
+class LeadPreview(BaseModel):
+    """
+    The 'Lite' version for the "New Leads" table.
+    (No contact info, because you haven't bought it yet!)
+    """
+    id: str
+    address: str
+    owner: Optional[str] = "Unknown"
+    equity: Optional[float] = 0.0
+
+# =======================
+# 2. INPUT SCHEMAS (Requests)
+# =======================
+
+class ScanRequest(BaseModel):
+    state: str
+    city: str
+    strategy: str
+
+class EnrichRequest(BaseModel):
+    state: str
+    city: str
+    strategy: str
+    radar_ids: List[str]
+
+# =======================
+# 3. OUTPUT SCHEMAS (Responses)
+# =======================
+
+class ScanSummary(BaseModel):
+    total_found: int
+    new_count: int
+    purchased_count: int
+    
+    # The leads available to buy (Lite Version)
+    leads: List[LeadPreview] = [] 
+    
+    # NEW: The leads you already own (Full Version!)
+    purchased_leads: List[LeadResponse] = []
+
+class EnrichResult(BaseModel):
+    status: str
+    saved_count: int
+
 class SearchHistoryResponse(BaseModel):
-    """
-    Defines how a 'History Item' looks in the Sidebar.
-    """
     id: int
     city: str
     strategy: str
     created_at: datetime
     total_results: int
-    
     class Config:
         from_attributes = True
