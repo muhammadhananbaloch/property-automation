@@ -50,20 +50,34 @@ class EnrichResult(BaseModel):
 # 3. DATABASE MODELS (Reading History)
 # =======================
 
+# app/api/schemas.py
+
+# ... keep previous classes the same ...
+
+# app/api/schemas.py
+
+# ... (keep other classes the same) ...
+
 class LeadResponse(BaseModel):
-    """
-    Defines how a 'Lead' looks when sent to the frontend.
-    """
     radar_id: str
     address: Optional[str]
     city: Optional[str]
+    state: Optional[str]
     owner_name: Optional[str]
     is_purchased: bool
-    phone_numbers: List[str] = []
     
+    # Real Estate Data
+    equity_value: Optional[float] = 0.0
+    estimated_value: Optional[float] = 0.0
+    beds: Optional[int] = 0
+    baths: Optional[float] = 0.0
+    year_built: Optional[int] = 0
+    
+    # Contact Info
+    phone_numbers: List[str] = []
+    emails: List[str] = []    
     class Config:
-        from_attributes = True  # Allows Pydantic to read SQLAlchemy objects
-
+        from_attributes = True
 class SearchHistoryResponse(BaseModel):
     """
     Defines how a 'History Item' looks in the Sidebar.
