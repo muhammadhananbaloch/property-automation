@@ -53,6 +53,7 @@ def get_leads_for_search(search_id: int, db: Session = Depends(get_db)):
             "estimated_value": lead.estimated_value,
             "beds": lead.beds,
             "baths": lead.baths,
+            "sq_ft": lead.sq_ft,
             "year_built": lead.year_built,
             "phone_numbers": parse_list(lead.phone_numbers),
             "emails": parse_list(lead.email_addresses) # Map DB 'email_addresses' -> Schema 'emails'
