@@ -153,7 +153,7 @@ const History = () => {
                             
                             <td className="px-6 py-4 text-sm text-slate-600">{lead.city}, {lead.state}</td>
 
-                            {/* UPDATED OWNER COLUMN: No truncation, allow wrap */}
+                            {/* UPDATED OWNER COLUMN: Wrapped Text */}
                             <td className="px-6 py-4 text-slate-800 text-sm font-medium whitespace-normal break-words max-w-[180px]">
                                 {lead.owner_name}
                             </td>
@@ -173,26 +173,32 @@ const History = () => {
                             </td>
                             <td className="px-6 py-4 text-sm text-slate-600">{lead.year_built}</td>
 
-                            <td className="px-6 py-4 align-top">
-                              {lead.phone_numbers && lead.phone_numbers.length > 0 ? (
-                                <div className="flex flex-col gap-1.5">
-                                  {lead.phone_numbers.map((phone, i) => (
+                            {/* PHONE NUMBERS WITH N/A */}
+                            <td className="px-6 py-4 align-middle">
+                              <div className="flex flex-col gap-1.5">
+                                {lead.phone_numbers && lead.phone_numbers.length > 0 ? (
+                                  lead.phone_numbers.map((phone, i) => (
                                     <span key={i} className="inline-block text-xs font-mono text-blue-700 bg-blue-50 px-2 py-1 rounded border border-blue-100 w-fit select-all">
                                       {phone}
                                     </span>
-                                  ))}
-                                </div>
-                              ) : <span className="text-slate-300 text-xs">-</span>}
+                                  ))
+                                ) : (
+                                  <span className="text-slate-400 text-xs italic">N/A</span>
+                                )}
+                              </div>
                             </td>
 
-                            <td className="px-6 py-4 align-top">
-                              {lead.emails && lead.emails.length > 0 ? (
-                                <div className="flex flex-col gap-1">
-                                  {lead.emails.map((email, i) => (
+                            {/* EMAILS WITH N/A */}
+                            <td className="px-6 py-4 align-middle">
+                              <div className="flex flex-col gap-1">
+                                {lead.emails && lead.emails.length > 0 ? (
+                                  lead.emails.map((email, i) => (
                                     <span key={i} className="text-xs text-slate-600 hover:text-brand-600 select-all" title={email}>{email}</span>
-                                  ))}
-                                </div>
-                              ) : <span className="text-slate-300 text-xs">-</span>}
+                                  ))
+                                ) : (
+                                  <span className="text-slate-400 text-xs italic">N/A</span>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))}
