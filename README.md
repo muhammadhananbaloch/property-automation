@@ -117,10 +117,12 @@ cd property-automation
 2. **Configure Environment:**
 Create a `.env` file in the root directory:
 ```env
-PROPERTY_RADAR_TOKEN=your_token_here
+PROPERTY_RADAR_API_TOKEN=your_token_here
 DB_USER=postgres
 DB_PASSWORD=password
 DB_NAME=property_db
+DB_HOST=127.0.0.1
+DB_PORT=5435
 
 ```
 
@@ -134,7 +136,7 @@ docker-compose up --build
 
 4. **Access the App:**
 * **Frontend Dashboard:** `http://localhost:5173`
-* **Backend Documentation:** `http://localhost:8000/docs`
+* **Backend Documentation:** `http://localhost:9999/docs`
 * **Database Viewer (Adminer):** `http://localhost:8080`
 
 
