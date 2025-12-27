@@ -13,6 +13,33 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  # --- 2. Backend Service (NEW) ---
+  backend:
+    build:
+      context: .              # Important: Context is root so it can find requirements.txt
+      dockerfile: app/Dockerfile
+    container_name: property_backend
+    restart: always
+    ports:
+      - "9999:8000"           # Expose API to your host machine
+    volumes:
+      - ./app:/app/app        # Hot-reload: Syncs your local code to the container
+    environment:
+      # Pass .env vars
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - PROPERTY_RADAR_API_TOKEN=${PROPERTY_RADAR_API_TOKEN}
+      # CRITICAL: Overwrite the host to use the docker service name
+      - DB_HOST=db
+      - DB_PORT=5432
+    depends_on:
+      - db
+    
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+
   # Optional: GUI Viewer (http://localhost:8080)
   adminer:
     image: adminer
