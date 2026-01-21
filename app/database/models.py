@@ -3,9 +3,28 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database.database import Base
 
-# --- TABLE 1: SEARCH HISTORY ---
+
+# --- TABLE 1: USERS (Authentication) ---
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    full_name = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationship: A user has many search history records
+    searches = relationship("SearchHistory", back_populates="user")
+
+
+# --- TABLE 2: SEARCH HISTORY ---
 class SearchHistory(Base):
     __tablename__ = "search_history"
+
+    # Link to User (Nullable for now to support legacy data)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     id = Column(Integer, primary_key=True, index=True)
     state = Column(String, nullable=False)
@@ -14,8 +33,9 @@ class SearchHistory(Base):
     total_results = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     results = relationship("SearchResult", back_populates="search")
+    user = relationship("User", back_populates="searches")
 
-# --- TABLE 2: LEADS (Updated for Real Estate Investors) ---
+# --- TABLE 3: LEADS (Real Estate Data) ---
 class Lead(Base):
     __tablename__ = "leads"
 
@@ -28,22 +48,20 @@ class Lead(Base):
     state = Column(String)
     zip_code = Column(String)
     
-    # --- NEW: Property Stats (The "Good Stuff") ---
+    # Property Stats
     beds = Column(Integer, nullable=True)
     baths = Column(Float, nullable=True)
     sq_ft = Column(Integer, nullable=True)
     year_built = Column(Integer, nullable=True)
     lot_sq_ft = Column(Integer, nullable=True)
-    property_type = Column(String, nullable=True) # e.g. "SFR", "Condo"
+    property_type = Column(String, nullable=True)
     
-    # --- NEW: Money Fields ---
+    # Financials
     estimated_value = Column(Integer, nullable=True) # AVM
     estimated_equity = Column(Integer, nullable=True)
     tax_delinquent = Column(Boolean, default=False)
     
-    # --- NEW: The "Safety Net" ---
-    # Stores the ENTIRE raw response from PropertyRadar. 
-    # If they send "Garage" or "Pool", it gets saved here automatically.
+    # Raw Data Safety Net
     raw_property_data = Column(JSON, nullable=True)
 
     # Owner & Contact
@@ -54,11 +72,11 @@ class Lead(Base):
     # Status
     is_purchased = Column(Boolean, default=False) 
     
-    # Links
+    # Relationships
     searches = relationship("SearchResult", back_populates="lead")
     messages = relationship("MessageLog", back_populates="lead")
 
-# --- TABLE 3: SEARCH RESULTS ---
+# --- TABLE 4: SEARCH RESULTS (Junction) ---
 class SearchResult(Base):
     __tablename__ = "search_results"
 
@@ -69,7 +87,7 @@ class SearchResult(Base):
     search = relationship("SearchHistory", back_populates="results")
     lead = relationship("Lead", back_populates="searches")
 
-# --- TABLE 4: MESSAGE LOGS ---
+# --- TABLE 5: MESSAGE LOGS ---
 class MessageLog(Base):
     __tablename__ = "message_logs"
 
