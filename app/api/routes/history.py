@@ -1,13 +1,14 @@
 import json
 import ast
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from typing import List
 
 from app.database.database import get_db
-from app.database.models import SearchHistory
+from app.database.models import SearchHistory, User # Added User
 from app.api.schemas import SearchHistoryResponse, LeadResponse
+from app.api.dependencies import get_current_user # Added Security Dependency
 
 router = APIRouter(
     prefix="/api/history",
@@ -15,15 +16,36 @@ router = APIRouter(
 )
 
 @router.get("/", response_model=List[SearchHistoryResponse])
-def get_all_history(db: Session = Depends(get_db)):
-    return db.query(SearchHistory).order_by(desc(SearchHistory.created_at)).all()
+def get_all_history(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user) # <--- Security Injection
+):
+    """
+    Fetch search history ONLY for the logged-in user.
+    """
+    return db.query(SearchHistory)\
+        .filter(SearchHistory.user_id == current_user.id)\
+        .order_by(desc(SearchHistory.created_at))\
+        .all()
 
 @router.get("/{search_id}", response_model=List[LeadResponse])
-def get_leads_for_search(search_id: int, db: Session = Depends(get_db)):
+def get_leads_for_search(
+    search_id: int, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user) # <--- Security Injection
+):
+    # 1. Find the search
     search = db.query(SearchHistory).filter(SearchHistory.id == search_id).first()
 
     if not search:
         raise HTTPException(status_code=404, detail="Search history not found")
+
+    # 2. Security Check: Does this search belong to the user?
+    if search.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="You are not authorized to view this search."
+        )
 
     formatted_leads = []
 
@@ -56,7 +78,7 @@ def get_leads_for_search(search_id: int, db: Session = Depends(get_db)):
             "sq_ft": lead.sq_ft,
             "year_built": lead.year_built,
             "phone_numbers": parse_list(lead.phone_numbers),
-            "emails": parse_list(lead.email_addresses) # Map DB 'email_addresses' -> Schema 'emails'
+            "emails": parse_list(lead.email_addresses) 
         })
 
     return formatted_leads
