@@ -1,12 +1,50 @@
 import json
 import ast
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 from typing import List, Optional, Any
 from datetime import datetime
 
-# =======================
-# 1. SHARED MODELS (Must come first!)
-# =======================
+
+# --- AUTH SCHEMAS ---
+class UserCreate(BaseModel):
+    email: EmailStr = Field(
+        ..., 
+        description="Valid email address used for login", 
+        examples=["hanan@jbs.com"]
+    )
+
+    password: str = Field(
+        ..., 
+        min_length=6, 
+        description="Secure password (min 6 characters)", 
+        examples=["Hanan@67"]
+    )
+
+    full_name: str = Field(
+        ..., 
+        min_length=3, 
+        max_length=50, 
+        description="User's Full name", 
+        examples=["Muhammad Hanan Baloch"]
+    )
+class UserResponse(BaseModel):
+    id: int
+    email: EmailStr
+    full_name: Optional[str] = None
+    is_active: bool
+
+    class Config:
+        from_attributes = True
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    email: Optional[str] = None
+
+
+# --- SHARED MODELS ---
 
 class LeadResponse(BaseModel):
     """
@@ -45,9 +83,7 @@ class LeadPreview(BaseModel):
     owner: Optional[str] = "Unknown"
     equity: Optional[float] = 0.0
 
-# =======================
-# 2. INPUT SCHEMAS (Requests)
-# =======================
+# --- INPUT SCHEMAS (Requests) ---
 
 class ScanRequest(BaseModel):
     state: str
@@ -60,9 +96,7 @@ class EnrichRequest(BaseModel):
     strategy: str
     radar_ids: List[str]
 
-# =======================
-# 3. OUTPUT SCHEMAS (Responses)
-# =======================
+# --- OUTPUT SCHEMAS (Responses) ---
 
 class ScanSummary(BaseModel):
     total_found: int
