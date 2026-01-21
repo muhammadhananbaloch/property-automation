@@ -3,7 +3,7 @@ from app.database.models import Lead, SearchHistory, SearchResult
 from datetime import datetime
 import json
 
-def create_search_record(db: Session, state: str, city: str, strategy: str):
+def create_search_record(db: Session, state: str, city: str, strategy: str, user_id: int = None):
     """
     1. LOGGING THE SEARCH
     Creates a receipt in the 'Search History' table.
@@ -12,6 +12,7 @@ def create_search_record(db: Session, state: str, city: str, strategy: str):
         state=state,
         city=city,
         strategy=strategy,
+        user_id=user_id,
         created_at=datetime.now()
     )
     db.add(search)
