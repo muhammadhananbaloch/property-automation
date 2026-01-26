@@ -4,7 +4,7 @@ from app.database.database import engine, Base
 
 
 # Import our modular routers
-from app.api.routes import search, history, auth
+from app.api.routes import search, history, auth, campaigns, messages
 
 from app.api.dependencies import get_current_user # <--- Import security dependency
 
@@ -47,6 +47,16 @@ app.include_router(
 
 app.include_router(
     history.router, 
+    dependencies=[Depends(get_current_user)]
+)
+
+app.include_router(
+    campaigns.router,
+    dependencies=[Depends(get_current_user)]
+)
+
+app.include_router(
+    messages.router,
     dependencies=[Depends(get_current_user)]
 )
 
