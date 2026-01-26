@@ -15,8 +15,9 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    # Relationship: A user has many search history records
+    # Relationship
     searches = relationship("SearchHistory", back_populates="user")
+    campaigns = relationship("Campaign", back_populates="user") # <--- NEW: Link to Campaigns
 
 
 # --- TABLE 2: SEARCH HISTORY ---
@@ -32,6 +33,7 @@ class SearchHistory(Base):
     strategy = Column(String, nullable=False)
     total_results = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
     results = relationship("SearchResult", back_populates="search")
     user = relationship("User", back_populates="searches")
 
@@ -57,7 +59,7 @@ class Lead(Base):
     property_type = Column(String, nullable=True)
     
     # Financials
-    estimated_value = Column(Integer, nullable=True) # AVM
+    estimated_value = Column(Integer, nullable=True)
     estimated_equity = Column(Integer, nullable=True)
     tax_delinquent = Column(Boolean, default=False)
     
@@ -74,7 +76,7 @@ class Lead(Base):
     
     # Relationships
     searches = relationship("SearchResult", back_populates="lead")
-    messages = relationship("MessageLog", back_populates="lead")
+    messages = relationship("Message", back_populates="lead") # <--- UPDATED: Points to new Message table
 
 # --- TABLE 4: SEARCH RESULTS (Junction) ---
 class SearchResult(Base):
@@ -87,18 +89,65 @@ class SearchResult(Base):
     search = relationship("SearchHistory", back_populates="results")
     lead = relationship("Lead", back_populates="searches")
 
-# --- TABLE 5: MESSAGE LOGS ---
-class MessageLog(Base):
-    __tablename__ = "message_logs"
+# --- NEW TABLE 5: CAMPAIGNS (The Folders) ---
+class Campaign(Base):
+    __tablename__ = "campaigns"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))  # Ownership
+    
+    name = Column(String)  # e.g., "Richmond Pre-Foreclosure - Jan 23"
+    template_body = Column(Text)  # The original message you wrote
+    
+    status = Column(String, default="active") # active, archived
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    user = relationship("User", back_populates="campaigns")
+    campaign_leads = relationship("CampaignLead", back_populates="campaign")
+    messages = relationship("Message", back_populates="campaign")
+
+
+# --- NEW TABLE 6: CAMPAIGN LEADS (The Roster) ---
+# This joins Leads to Campaigns. A lead can be in multiple campaigns.
+class CampaignLead(Base):
+    __tablename__ = "campaign_leads"
+
+    id = Column(Integer, primary_key=True, index=True)
+    campaign_id = Column(Integer, ForeignKey("campaigns.id"))
     lead_id = Column(String, ForeignKey("leads.radar_id"))
-    campaign_id = Column(Integer, ForeignKey("search_history.id"), nullable=True)
     
-    to_number = Column(String)
+    # Status in this specific campaign
+    status = Column(String, default="queued") # queued, sent, replied, stopped
+    
+    # Relationships
+    campaign = relationship("Campaign", back_populates="campaign_leads")
+    lead = relationship("Lead") # One-way link to Lead details
+
+
+# --- TABLE 7: MESSAGES (The Chat Bubbles) ---
+class Message(Base):
+    __tablename__ = "messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    campaign_id = Column(Integer, ForeignKey("campaigns.id"), nullable=True)
+    lead_id = Column(String, ForeignKey("leads.radar_id"))
+    
+    # Core Data
+    direction = Column(String) # "outbound-api", "inbound"
     body = Column(Text)
-    status = Column(String)
-    sid = Column(String)
-    sent_at = Column(DateTime(timezone=True), server_default=func.now())
     
+    # Twilio Tech Details
+    twilio_sid = Column(String, unique=True, nullable=True) # "sid" from JSON
+    status = Column(String) # "queued", "sent", "delivered", "failed", "undelivered"
+    
+    # Cost & Logging
+    cost = Column(Float, nullable=True) # "price" from JSON (Populates later)
+    error_message = Column(String, nullable=True) # <--- NEW: captures failure reasons
+    to_phone = Column(String, nullable=True)      # <--- NEW: captures specific number used
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now()) # "date_created"
+
+    # Relationships
+    campaign = relationship("Campaign", back_populates="messages")
     lead = relationship("Lead", back_populates="messages")
