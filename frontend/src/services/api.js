@@ -11,7 +11,7 @@ const client = axios.create({
   },
 });
 
-// --- NEW: INTERCEPTOR (The Gatekeeper) ---
+// --- INTERCEPTOR (The Gatekeeper) ---
 // Automatically injects the token into every request
 client.interceptors.request.use(
   (config) => {
@@ -25,7 +25,7 @@ client.interceptors.request.use(
 );
 
 export const api = {
-  // --- AUTH SERVICES (NEW) ---
+  // --- AUTH SERVICES ---
   
   // Login: Special handling for FastAPI OAuth2 Form Data
   login: async (email, password) => {
@@ -74,6 +74,34 @@ export const api = {
 
   getLeads: async (searchId) => {
     const response = await client.get(`/history/${searchId}`);
+    return response.data;
+  },
+
+  // --- NEW: CAMPAIGN & MESSAGING ENDPOINTS ---
+  
+  // 1. Get all campaigns (for the Dashboard)
+  getCampaigns: async () => {
+    const response = await client.get('/campaigns/');
+    return response.data;
+  },
+
+  // 2. Start a new campaign (The Blaster)
+  startCampaign: async (payload) => {
+    // payload = { name, template_body, lead_ids }
+    const response = await client.post('/campaigns/start', payload);
+    return response.data;
+  },
+
+  // 3. Get the Inbox (Chat History)
+  getCampaignInbox: async (campaignId) => {
+    const response = await client.get(`/campaigns/${campaignId}/inbox`);
+    return response.data;
+  },
+
+  // 4. Send a manual message (1-on-1 Reply)
+  sendOneOffMessage: async (payload) => {
+    // payload = { lead_id, body, campaign_id }
+    const response = await client.post('/messages/send', payload);
     return response.data;
   }
 };
