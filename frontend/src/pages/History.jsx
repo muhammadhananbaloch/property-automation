@@ -1,17 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
+import { useNavigate } from 'react-router-dom'; // Added for redirect
 import { Card } from '../components/ui/Card';
 import { Table } from '../components/ui/Table';
 import { Button } from '../components/ui/Button';
-import { FileText, Calendar, Loader2, AlertCircle } from 'lucide-react';
+import { FileText, Loader2, AlertCircle, Send } from 'lucide-react';
+import CreateCampaignModal from '../components/campaigns/CreateCampaignModal'; // Import Modal
 
 const History = () => {
+  const navigate = useNavigate();
   const [historyItems, setHistoryItems] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   
   const [selectedBatchId, setSelectedBatchId] = useState(null);
   const [batchLeads, setBatchLeads] = useState([]);
   const [isLoadingLeads, setIsLoadingLeads] = useState(false);
+
+  // --- SELECTION STATE ---
+  const [selectedLeadIds, setSelectedLeadIds] = useState(new Set());
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     loadHistory();
@@ -35,6 +42,7 @@ const History = () => {
     setSelectedBatchId(batchId);
     setIsLoadingLeads(true);
     setBatchLeads([]); 
+    setSelectedLeadIds(new Set()); // Reset selection when switching batches
 
     try {
       const data = await api.getLeads(batchId);
@@ -44,6 +52,34 @@ const History = () => {
     } finally {
       setIsLoadingLeads(false);
     }
+  };
+
+  // --- SELECTION LOGIC ---
+  const toggleSelectAll = () => {
+    if (selectedLeadIds.size === batchLeads.length) {
+      setSelectedLeadIds(new Set());
+    } else {
+      setSelectedLeadIds(new Set(batchLeads.map(l => l.radar_id)));
+    }
+  };
+
+  const toggleSelectOne = (id) => {
+    const newSet = new Set(selectedLeadIds);
+    if (newSet.has(id)) newSet.delete(id);
+    else newSet.add(id);
+    setSelectedLeadIds(newSet);
+  };
+
+  const getSelectedObjects = () => {
+    return batchLeads.filter(l => selectedLeadIds.has(l.radar_id));
+  };
+
+  const getCampaignName = () => {
+    const item = historyItems.find(i => i.id === selectedBatchId);
+    if (!item) return "";
+    // Clean up strategy name (e.g., "pre_foreclosure" -> "Pre Foreclosure")
+    const strategyName = item.strategy.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    return `${item.city} - ${strategyName} Blast`;
   };
 
   if (isLoadingHistory) {
@@ -126,8 +162,18 @@ const History = () => {
                      <p className="text-xs text-slate-500">Full data access</p>
                    </div>
                 </div>
-                <div className="text-sm text-slate-500">
-                  Showing <span className="font-bold text-slate-900">{batchLeads.length}</span> records
+                
+                {/* ACTION AREA */}
+                <div className="flex items-center gap-3">
+                  {selectedLeadIds.size > 0 ? (
+                     <Button onClick={() => setIsModalOpen(true)} className="bg-blue-600 text-white hover:bg-blue-700 animate-in fade-in zoom-in">
+                       <Send size={16} className="mr-2" /> Start Campaign ({selectedLeadIds.size})
+                     </Button>
+                  ) : (
+                    <div className="text-sm text-slate-500">
+                       Showing <span className="font-bold text-slate-900">{batchLeads.length}</span> records
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -145,59 +191,52 @@ const History = () => {
                 ) : (
                   <div className="min-w-full inline-block align-middle p-4">
                     <div className="border rounded-xl overflow-hidden shadow-sm bg-white">
-                      <Table headers={["Address", "City", "Owner", "Equity", "Value", "Beds", "Baths", "SqFt", "Year", "Phone", "Email"]}>
+                      <Table headers={[
+                        <input type="checkbox" onChange={toggleSelectAll} checked={batchLeads.length > 0 && selectedLeadIds.size === batchLeads.length} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" />,
+                        "Address", "City", "Owner", "Equity", "Value", "Beds", "Baths", "SqFt", "Year", "Phone", "Email"
+                      ]}>
                         {batchLeads.map((lead, index) => (
-                          <tr key={index} className="hover:bg-blue-50/50 transition-colors border-b border-slate-100 group">
+                          <tr key={index} className={`hover:bg-blue-50/50 transition-colors border-b border-slate-100 group ${selectedLeadIds.has(lead.radar_id) ? 'bg-blue-50/30' : ''}`}>
                             
+                            {/* CHECKBOX */}
+                            <td className="px-6 py-4">
+                               <input 
+                                 type="checkbox" 
+                                 checked={selectedLeadIds.has(lead.radar_id)}
+                                 onChange={() => toggleSelectOne(lead.radar_id)}
+                                 className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                               />
+                            </td>
+
                             <td className="px-6 py-4 font-bold text-slate-900 text-sm">{lead.address}</td>
-                            
                             <td className="px-6 py-4 text-sm text-slate-600">{lead.city}, {lead.state}</td>
-
-                            {/* UPDATED OWNER COLUMN: Wrapped Text */}
-                            <td className="px-6 py-4 text-slate-800 text-sm font-medium whitespace-normal break-words max-w-[180px]">
-                                {lead.owner_name}
-                            </td>
-
-                            <td className="px-6 py-4 font-bold text-emerald-700 text-sm">
-                                ${(lead.equity_value || 0).toLocaleString()}
-                            </td>
-                            
-                            <td className="px-6 py-4 text-sm text-slate-600 font-medium">
-                              ${(lead.estimated_value || 0).toLocaleString()}
-                            </td>
-                            
+                            <td className="px-6 py-4 text-slate-800 text-sm font-medium whitespace-normal break-words max-w-[180px]">{lead.owner_name}</td>
+                            <td className="px-6 py-4 font-bold text-emerald-700 text-sm">${(lead.equity_value || 0).toLocaleString()}</td>
+                            <td className="px-6 py-4 text-sm text-slate-600 font-medium">${(lead.estimated_value || 0).toLocaleString()}</td>
                             <td className="px-6 py-4 text-sm text-slate-600">{lead.beds}</td>
                             <td className="px-6 py-4 text-sm text-slate-600">{lead.baths}</td>
-                            <td className="px-6 py-4 text-sm text-slate-600 font-medium">
-                                {lead.sq_ft ? lead.sq_ft.toLocaleString() : '-'}
-                            </td>
+                            <td className="px-6 py-4 text-sm text-slate-600 font-medium">{lead.sq_ft ? lead.sq_ft.toLocaleString() : '-'}</td>
                             <td className="px-6 py-4 text-sm text-slate-600">{lead.year_built}</td>
-
-                            {/* PHONE NUMBERS WITH N/A */}
+                            
+                            {/* Phones */}
                             <td className="px-6 py-4 align-middle">
                               <div className="flex flex-col gap-1.5">
                                 {lead.phone_numbers && lead.phone_numbers.length > 0 ? (
                                   lead.phone_numbers.map((phone, i) => (
-                                    <span key={i} className="inline-block text-xs font-mono text-blue-700 bg-blue-50 px-2 py-1 rounded border border-blue-100 w-fit select-all">
-                                      {phone}
-                                    </span>
+                                    <span key={i} className="inline-block text-xs font-mono text-blue-700 bg-blue-50 px-2 py-1 rounded border border-blue-100 w-fit select-all">{phone}</span>
                                   ))
-                                ) : (
-                                  <span className="text-slate-400 text-xs italic">N/A</span>
-                                )}
+                                ) : <span className="text-slate-400 text-xs italic">N/A</span>}
                               </div>
                             </td>
 
-                            {/* EMAILS WITH N/A */}
+                            {/* Emails */}
                             <td className="px-6 py-4 align-middle">
                               <div className="flex flex-col gap-1">
                                 {lead.emails && lead.emails.length > 0 ? (
                                   lead.emails.map((email, i) => (
                                     <span key={i} className="text-xs text-slate-600 hover:text-brand-600 select-all" title={email}>{email}</span>
                                   ))
-                                ) : (
-                                  <span className="text-slate-400 text-xs italic">N/A</span>
-                                )}
+                                ) : <span className="text-slate-400 text-xs italic">N/A</span>}
                               </div>
                             </td>
                           </tr>
@@ -216,6 +255,16 @@ const History = () => {
           )}
         </Card>
       </div>
+
+      {isModalOpen && (
+        <CreateCampaignModal 
+           selectedLeads={getSelectedObjects()}
+           defaultName={getCampaignName()}
+           onClose={() => setIsModalOpen(false)}
+           onSuccess={() => navigate('/campaigns')}
+        />
+      )}
+
     </div>
   );
 };
