@@ -14,6 +14,7 @@ import History from './pages/History';
 import Campaigns from './pages/Campaigns';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
+import CampaignInbox from './pages/CampaignInbox';
 
 function App() {
   return (
@@ -40,6 +41,7 @@ function App() {
                     <Route path="dashboard" element={<Dashboard />} />
                     <Route path="history" element={<History />} />
                     <Route path="campaigns" element={<Campaigns />} />
+                    <Route path="campaigns/:id" element={<CampaignInbox />} />
                     
                     {/* Catch-all inside protected area */}
                     <Route path="*" element={<Navigate to="/dashboard" replace />} />
