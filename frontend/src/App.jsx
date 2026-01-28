@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 // Auth & Security Components
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/layout/ProtectedRoute';
+import PublicRoute from './components/layout/PublicRoute'; // <--- NEW IMPORT
 
 // Layouts
 import MainLayout from './components/layout/MainLayout';
@@ -23,12 +24,26 @@ function App() {
       <BrowserRouter>
         <Routes>
           
-          {/* --- PUBLIC ROUTES (No MainLayout, No Protection) --- */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
+          {/* --- PUBLIC ROUTES (Guest Only) --- */}
+          {/* If you are logged in, these will now redirect you to /dashboard */}
+          <Route 
+            path="/login" 
+            element={
+              <PublicRoute>
+                <Login />
+              </PublicRoute>
+            } 
+          />
+          <Route 
+            path="/signup" 
+            element={
+              <PublicRoute>
+                <Signup />
+              </PublicRoute>
+            } 
+          />
 
           {/* --- PROTECTED ROUTES (Wrapped in MainLayout) --- */}
-          {/* We use a wildcard '/*' so this Route handles all other paths */}
           <Route
             path="/*"
             element={
