@@ -105,8 +105,51 @@ const Dashboard = () => {
     }
   };
 
-  const handleExport = () => { /* ... existing export logic ... */ };
+const handleExport = () => {
+    if (selectedOwnedIds.length === 0) {
+        setError("No leads selected. Please check the boxes next to the leads you want to export.");
+        setTimeout(() => setError(null), 3000);
+        return;
+    }
 
+    const leadsToExport = scanResult.purchased_leads.filter(lead => 
+        selectedOwnedIds.includes(lead.radar_id)
+    );
+
+    if (leadsToExport.length === 0) return;
+
+    const headers = ["Address", "City", "State", "Owner", "Equity", "Value", "Beds", "Baths", "SqFt", "Year Built", "Phone Numbers", "Emails"];
+    
+    const rows = leadsToExport.map(lead => [
+        `"${lead.address || ''}"`,
+        `"${lead.city || ''}"`,
+        `"${lead.state || ''}"`,
+        `"${lead.owner_name || ''}"`,
+        lead.equity_value || 0,
+        lead.estimated_value || 0,
+        lead.beds || 0,
+        lead.baths || 0,
+        lead.sq_ft || 0,
+        lead.year_built || 0,
+        `"${(lead.phone_numbers || []).join('; ')}"`, 
+        `"${(lead.emails || []).join('; ')}"`         
+    ]);
+
+    const csvContent = [
+        headers.join(","),
+        ...rows.map(e => e.join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `propauto_export_${searchCriteria?.city}_${selectedOwnedIds.length}_leads.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  
   // --- NEW: CAMPAIGN NAME GENERATOR ---
   const getCampaignName = () => {
     if (!searchCriteria) return "";
