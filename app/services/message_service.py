@@ -104,79 +104,86 @@ def send_one_off_message(payload: MessageCreate, db: Session):
 def handle_inbound_sms(data: dict, db: Session):
     """
     Processes an incoming SMS webhook from Twilio.
-    1. Identifies the Lead by Phone Number.
-    2. Attributes the reply to the most recent active Campaign.
-    3. Saves the message.
-    4. Updates Lead status to 'replied'.
+    1. Finds ALL leads with this phone number.
+    2. Checks message history to find the MOST RECENT conversation context.
+    3. Attributes the reply to the correct Campaign and Lead ID.
     """
     
-    # 1. Extract Data from Twilio Webhook
-    from_number = data.get("From")       # e.g., "+15550001234"
-    body = data.get("Body", "")          # The actual text
-    twilio_sid = data.get("MessageSid")  # Unique ID
+    # 1. Extract Data
+    from_number = data.get("From")       
+    body = data.get("Body", "")          
+    twilio_sid = data.get("MessageSid")  
     
     if not from_number:
         print("Error: No 'From' number in webhook.")
         return
 
-    # 2. Find the Lead
-    # FIX: Cast the JSON column to String so we can search it like text
-    # This prevents "operator does not exist: json ~~ text" error
-    lead = db.query(Lead).filter(
+    # 2. Find ALL Leads with this number (not just the first one)
+    # We cast to String to allow LIKE search on JSON array
+    leads = db.query(Lead).filter(
         cast(Lead.phone_numbers, String).like(f"%{from_number}%")
-    ).first()
+    ).all()
     
-    if not lead:
+    if not leads:
         print(f"⚠️ Incoming SMS from unknown number: {from_number}")
         return
 
-    # 3. Find the 'Last Touch' Campaign
-    # We look for the most recent 'outbound' message sent to this lead 
-    # to figure out which campaign they are replying to.
+    # Collect all Lead IDs that match this phone number
+    possible_lead_ids = [l.radar_id for l in leads]
+
+    # 3. Find the 'Last Touch' across ALL matching leads
+    # We want the most recent OUTBOUND message sent to ANY of these lead IDs.
     last_outbound = db.query(Message).filter(
-        Message.lead_id == lead.radar_id,
-        Message.direction.like('outbound%') # Matches 'outbound-api'
+        Message.lead_id.in_(possible_lead_ids),
+        Message.direction.like('outbound%') 
     ).order_by(Message.created_at.desc()).first()
     
-    campaign_id = last_outbound.campaign_id if last_outbound else None
-    
-    # Fallback: If no message history, check if they are in ANY active campaign roster
-    if not campaign_id:
-        active_roster = db.query(CampaignLead).filter(
-            CampaignLead.lead_id == lead.radar_id
+    # Defaults
+    target_lead_id = leads[0].radar_id # Default to first found if no history
+    campaign_id = None
+
+    # If we found a conversation history, stick to that context
+    if last_outbound:
+        target_lead_id = last_outbound.lead_id
+        campaign_id = last_outbound.campaign_id
+    else:
+        # Fallback: If no messages ever sent, check which Campaign Roster was added to most recently
+        last_roster_entry = db.query(CampaignLead).filter(
+            CampaignLead.lead_id.in_(possible_lead_ids)
         ).order_by(CampaignLead.created_at.desc()).first()
-        if active_roster:
-            campaign_id = active_roster.campaign_id
+        
+        if last_roster_entry:
+            target_lead_id = last_roster_entry.lead_id
+            campaign_id = last_roster_entry.campaign_id
 
     # 4. Save the Message
     new_message = Message(
-        campaign_id=campaign_id, # Can be Null if we can't link it
-        lead_id=lead.radar_id,
+        campaign_id=campaign_id,
+        lead_id=target_lead_id, # <--- Uses the ID from the active conversation
         direction='inbound',
         body=body,
         twilio_sid=twilio_sid,
         status='received',
-        to_phone=from_number # We store the sender's number here for reference
+        to_phone=from_number
     )
     
     try:
         db.add(new_message)
         db.commit()
     except Exception as e:
-        # If UNIQUE constraint fails (duplicate webhook from Twilio retry), rollback and ignore
         db.rollback()
         print(f"ℹ️ Message {twilio_sid} already exists. Skipping.")
         return
 
-    # 5. Update Roster Status (Mark as 'replied')
+    # 5. Update Status
     if campaign_id:
         roster_entry = db.query(CampaignLead).filter(
             CampaignLead.campaign_id == campaign_id,
-            CampaignLead.lead_id == lead.radar_id
+            CampaignLead.lead_id == target_lead_id
         ).first()
         
         if roster_entry:
             roster_entry.status = 'replied'
             db.commit()
 
-    print(f"✅ Inbound SMS processed for {lead.owner_name} (Campaign {campaign_id})")
+    print(f"✅ Inbound SMS linked to Campaign {campaign_id} (Lead: {target_lead_id})")
