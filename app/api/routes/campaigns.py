@@ -58,13 +58,12 @@ def start_campaign(
     # 4. Trigger Background Task
     background_tasks.add_task(launch_campaign_task, new_campaign.id, db)
 
-    # 5. Return Response (MANUAL FIX)
-    # We construct the dictionary manually to include 'total_leads'
+    # 5. Return Response
     return {
         "id": new_campaign.id,
         "name": new_campaign.name,
         "status": new_campaign.status,
-        "total_leads": len(valid_leads), # <--- The missing piece!
+        "total_leads": len(valid_leads),
         "created_at": new_campaign.created_at
     }
 
@@ -76,7 +75,6 @@ def get_user_campaigns(
     """Retrieves all campaigns associated with the current user."""
     campaigns = db.query(Campaign).filter(Campaign.user_id == current_user.id).order_by(Campaign.created_at.desc()).all()
     
-    # We must manually count leads for each campaign to satisfy the schema
     results = []
     for c in campaigns:
         count = db.query(CampaignLead).filter(CampaignLead.campaign_id == c.id).count()
@@ -84,12 +82,77 @@ def get_user_campaigns(
             "id": c.id,
             "name": c.name,
             "status": c.status,
-            "total_leads": count, # <--- The missing piece!
+            "total_leads": count,
             "created_at": c.created_at
         })
         
     return results
 
+# --- NEW: ARCHIVE ENDPOINT ---
+@router.put("/{campaign_id}/archive", response_model=CampaignResponse)
+def archive_campaign(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Toggles a campaign status:
+    - If active -> 'archived'
+    - If 'archived' -> 'completed' (Restores it to view)
+    """
+    campaign = db.query(Campaign).filter(
+        Campaign.id == campaign_id, 
+        Campaign.user_id == current_user.id
+    ).first()
+    
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    # Toggle Logic
+    if campaign.status == 'archived':
+        campaign.status = 'completed'
+    else:
+        campaign.status = 'archived'
+        
+    db.commit()
+    db.refresh(campaign)
+    
+    count = db.query(CampaignLead).filter(CampaignLead.campaign_id == campaign.id).count()
+    
+    return {
+        "id": campaign.id,
+        "name": campaign.name,
+        "status": campaign.status,
+        "total_leads": count,
+        "created_at": campaign.created_at
+    }
+
+# --- NEW: DELETE ENDPOINT (Optional but recommended for cleanup) ---
+@router.delete("/{campaign_id}", status_code=204)
+def delete_campaign(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Deletes a campaign and all associated data (roster, messages).
+    """
+    campaign = db.query(Campaign).filter(
+        Campaign.id == campaign_id, 
+        Campaign.user_id == current_user.id
+    ).first()
+    
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    # Manual Cascade
+    db.query(CampaignLead).filter(CampaignLead.campaign_id == campaign_id).delete()
+    db.query(Message).filter(Message.campaign_id == campaign_id).delete()
+    
+    db.delete(campaign)
+    db.commit()
+    
+    return None
 
 # --- INBOX / CONVERSATION ENDPOINT ---
 
@@ -101,10 +164,9 @@ def get_campaign_inbox(
 ):
     """
     Fetches the full 'Chat Interface' data for a specific campaign.
-    Groups messages by lead and sorts by most recent activity.
     """
     
-    # 1. Security: Get Campaign & Verify Ownership
+    # 1. Security
     campaign = db.query(Campaign).filter(
         Campaign.id == campaign_id,
         Campaign.user_id == current_user.id
@@ -113,29 +175,28 @@ def get_campaign_inbox(
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
-    # 2. Fetch the Roster (The Leads)
+    # 2. Fetch Roster
     roster_items = db.query(CampaignLead).filter(
         CampaignLead.campaign_id == campaign_id
     ).all()
 
-    # 3. Fetch all Messages for this Campaign
+    # 3. Fetch Messages
     all_messages = db.query(Message).filter(
         Message.campaign_id == campaign_id
     ).order_by(Message.created_at.asc()).all()
 
-    # 4. Group Messages by Lead
+    # 4. Group Messages
     msg_map = defaultdict(list)
     for msg in all_messages:
         msg_map[msg.lead_id].append(msg)
 
-    # 5. Build Conversation Objects
+    # 5. Build Objects
     conversations = []
     
     for item in roster_items:
         lead = item.lead
         msgs = msg_map.get(lead.radar_id, [])
         
-        # Determine Primary Phone
         display_phone = None
         if lead.phone_numbers:
             phones = lead.phone_numbers
@@ -145,7 +206,6 @@ def get_campaign_inbox(
             if isinstance(phones, list) and phones:
                 display_phone = phones[0]
 
-        # Calculate Last Activity (for sorting)
         last_active = None
         if msgs:
             last_active = msgs[-1].created_at
@@ -162,7 +222,7 @@ def get_campaign_inbox(
             "last_activity_at": last_active
         })
 
-    # 6. Sort: Most recent activity first
+    # 6. Sort
     conversations.sort(key=lambda x: x["last_activity_at"] or datetime.min, reverse=True)
 
     return {

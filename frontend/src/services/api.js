@@ -77,7 +77,7 @@ export const api = {
     return response.data;
   },
 
-  // --- NEW: CAMPAIGN & MESSAGING ENDPOINTS ---
+  // --- CAMPAIGN & MESSAGING ENDPOINTS ---
   
   // 1. Get all campaigns (for the Dashboard)
   getCampaigns: async () => {
@@ -102,6 +102,18 @@ export const api = {
   sendOneOffMessage: async (payload) => {
     // payload = { lead_id, body, campaign_id }
     const response = await client.post('/messages/send', payload);
+    return response.data;
+  },
+
+  // 5. Delete a campaign
+  deleteCampaign: async (campaignId) => {
+    const response = await client.delete(`/campaigns/${campaignId}`);
+    return response.data;
+  },
+
+  // 6. Archive (Toggle) a campaign
+  archiveCampaign: async (campaignId) => {
+    const response = await client.put(`/campaigns/${campaignId}/archive`);
     return response.data;
   }
 };
