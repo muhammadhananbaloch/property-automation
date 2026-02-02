@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '../services/api';
+import { api } from '../services/api.js';
 import { useNavigate } from 'react-router-dom'; // Added for redirect
-import { ScanForm } from '../components/features/ScanForm';
-import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button'; 
-import { Table } from '../components/ui/Table';
+import { ScanForm } from '../components/features/ScanFrom.jsx';
+import { Card } from '../components/ui/Card.jsx';
+import { Button } from '../components/ui/Button.jsx'; 
+import { Table } from '../components/ui/Table.jsx';
 import { CheckCircle2, AlertCircle, ShoppingCart, ArrowRight, RefreshCw, ArrowLeft, MapPin, Download, Send } from 'lucide-react';
-import CreateCampaignModal from '../components/campaigns/CreateCampaignModal'; // Import Modal
+import CreateCampaignModal from '../components/campaigns/CreateCampaignModal.jsx'; // Import Modal
 
 const Dashboard = () => {
   const navigate = useNavigate();

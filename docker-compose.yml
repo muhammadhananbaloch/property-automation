@@ -24,6 +24,8 @@ services:
       - "9999:8000"           # Expose API to your host machine
     volumes:
       - ./app:/app/app        # Hot-reload: Syncs your local code to the container
+    env_file:
+      - .env
     environment:
       # Pass .env vars
       - DB_USER=${DB_USER}
